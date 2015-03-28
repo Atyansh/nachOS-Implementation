@@ -1,0 +1,236 @@
+CSE 120 Nachos Project 1: Threads
+
+Team Members-
+Atyansh Jaiswal
+Connor Gregory Nicholson
+Eduardo Ramirez Alcala
+Victor Miguel Alor
+
+
+
+
+1. Locks and Conditions
+We implemented Locks in a similar way to semaphores. We used a locked variable
+to check whether a lock is locked or not. We use a wait queue for the lock to
+see who is waiting to acquire the lock.
+
+The Acquire() method disables interrupts, waits until lock is free by checking
+the locked variable. If it cannot acquire yet, adds itself to the wait queue,
+and goes to sleep. Otherwise, acquires the lock (changing the variable and
+setting the threadHeld of the lock to the current thread.) Then enables
+interrupts again.
+
+The Release() method disables interrupts, diables the lock (changing the locked
+variable), pops a thread from the lock's wait queue and adds it to the scheduler
+It also changes the threadHeld variable to null. Enables interrupts again.
+
+The isHeldByCurrentThread() method checks whether the current thread is the same
+as the one in the threadHeld variable.
+
+
+We implemented Condition Variables using a lock and a wait queue. The lock is
+used by the condition variable to get atomicity. The wait queue is used to
+append waiting threads.
+
+The Wait() method disables interrupts first,releases the
+lock, inserts the thread into the queue and goes to sleep. Once it wakes up,
+enables interrupts again and then acquires the lock again.
+
+The Signal() method removes a thread from the queue puts it on the scheduler.
+
+The Broadcast() method works the same way but does it for all threads on the
+queue.
+
+
+We tested the Lock using assert statements and writing tests. The asserts made
+sure that invariants are always true. We wrote the following tests to test the
+Lock. All tests are defined in threadtest.cc as methods, they're called by 
+passing in a parameter to -q <number> to nachos.
+
+LockTest1() tests basic functionality of a lock where two different thread try
+to acquire and release the locks on their own.
+
+LocktestHolder_Reacquires() tries to acquire the lock twice from same thread.
+Should fail.
+
+Locktest_ReleaseWithout_Held() tries to release without holding the lock. Aborts
+
+Locktest_ReleaseWithout_Held2() acquires the lock, lets a bunch of threads try 
+to acquire and release and then parent thread releases the lock and then tries
+to release again. Shoule Abort.
+
+LockTest_DeleteLockThatIsHeld() tries to delete locks that are being held.
+Should abort.
+
+
+We tested Condition Variables using various tests-
+
+ConditionTest_NotHoldingLock() tries to Wait while not holding the lock. Should
+abort.
+
+ConditionTest_DeleteWaitTest() tries to delete a cv when threads are waiting on
+it. Should abort.
+
+Condition_Test_Signal_WakesUpOne() makes sure signal only wakes up one thread.
+
+Condition_Test_BroadCastWakesAll() makes sure Broadcast wakes up all thread
+waiting on that cv
+
+Condition_Test_Signal_Lost() makes sure Signal was lost if signalled before
+waiting.
+
+Condition_Test_BroadCast_Lost() makes sure BroadCast was lost if broadcasted 
+before waiting.
+
+Condition_Test_GivesUpLockInWait() makes sure Condition Variable releases the
+lock when Wait is called
+
+
+
+
+2. Mailbox
+We used Locks and Condition Variables to implement Mailbox. We used one lock
+for the mailbox, one cv to make Send() wait, one cv to make Receive() wait.
+We used a buffer to store the message and pass values, receivePres to see how
+many receives were present and bufferRead to see whether the buffer has a value
+present or not.
+
+The Send() method acquires the lock and waits until there is at least one
+receive and no other Send() methods have put a value into the buffer that has
+not yet been read by a Receive() method. Once it can proceed, it copies the
+message into the buffer and changes the bufferRead boolean variable. It then
+Signals the receive method to wake up and releases the lock and exits.
+
+The Receive() method acquires the lock and increments receivePress to indicate
+that there is another receive method waiting. It then waits until there is a
+value in the buffer to read. Once it can proceed, it reads the value from the
+buffer, decrements receivePres and changes bufferRead to tell that it's done.
+It then releases the lock and exits.
+
+
+We tested Mailbox by writing several tests- We handle multiple
+senders and receivers by forking new threads to call those methods. We created
+several
+
+MailBoxSimpleTest() tests simple MailBox functionality.
+
+MailBoxMultiSendersWaiting() tests when multiple senders wait first and then get
+receivers.
+
+MailBoxMultiReceiveWaiting() tests when multiple receivers wait first and then
+get senders.
+
+MailBoxCrashWhenDeleted() tries to delete when there is a sender waiting. Should
+Abort.
+
+MailBoxCrashWhenDeleted2() tries to delete when there is a receiveer waiting.
+Should Abort.
+
+MailBoxDeleteEmpty() deletes an empty Mailbox, works.
+
+MailBoxMixedSendAndReceive() is the mother of all mail tests and tries different
+variations of senders and receivers in different order. Works.
+
+
+
+
+3. Join
+We used Locks and Condition Variables to implement Join. We have 1 lock and 1 cv
+and a readyToJoin variable to indicate when we are ready to join. We also added 
+a parameter to the thread to indicate whether it will be joined or not later
+
+The Finish method keeps waiting until join has been called. It then goes to wait
+until join has finished executing. It then indicates thread to be destroyed. If
+join would never be called, it skips waiting and indicates thread to be
+destroyed.
+
+
+We tested join by writing several assert statements for invariants. We also
+have following tests-
+
+ForkerThread() is simple test to test functionality.
+
+TestJoinOnlyAfterFork() tries to join without forking, should abort.
+
+TestNonJoinableCrashs() tries to join a thread when it wasn't indicated that one
+could join a thread. Should abort.
+
+TestThatJoinCallableOnce() tries to call join twice. Should abort.
+
+TestThatJoinCannotBeCalledOnself() tries to make child call join on itself.
+Should fail.
+
+TestThatParentsBlocking() tests to see that parent gets back control after join
+
+TestTerminatesOnlyWhenJoinCalled() tests that a child fully deletes itself only
+after the parent calls join.
+
+
+
+
+4. Priorities
+We implemented this by adding a priority variable to threads. We then created
+setPriority and getPriority methods to change and get priorities. The threads
+are scheduled by priority by replacing the Append call with a SortedInsert call.
+We did this for adding to the waiting queue of the locks, cv's, semaphores and
+scheduler. But Since the SortedInsert call sorts in ascennding order of
+priorities, we inserted by negating the priorities to maintaing descending order
+
+
+We tested this by writing the following testers-
+
+PriorityTest() tests functionality by creating threads of varying priorities and
+making sure they run in priority order for scheduler
+
+TestThatMaxPriorityAlwaysTop() makes sure that max priority threads always run
+first.
+
+TestPriorityWithConditionVariable() tests priority order for cv's
+
+TestPriorityWithLock() tests priority order for locks
+
+TestPriorityWithSemaphores() tests priority order for semaphores
+
+
+
+
+5. Whales
+We implemented Whale using one lock and 3 condition variables (one for each type
+of whale). We use 3 int variables to keep count of number of each type of whale
+present (maleCount and such), and we use 3 variables to keep track whether a
+type of Whale is ready to be matched (maleFound and such).
+
+The Male(), Female() and Matchmaker all work in the same fashion, for brevity,
+we have descrived only one of the functions, while the the others work in the
+exact same fashion with minor changes.
+
+The Male() function acquires the lock, increments the maleCount and waits until
+there is at least one female and one matchmaker present and no male has been
+found and waiting to be matched.  Once it exits the while loop, it indicates
+that male has been found and ready to be matched. It then checks if all have
+been found and decrements the counts and founds and also indicates that a match
+has been found, otherwise does nothing. Only the last whale type does the
+decrementation.
+
+
+We tested it by creating the following methods-
+
+WhaleTest() tests the simple functionality by calling different types of whales
+in different order. Indicates a match found once there is a whale of each type.
+
+maleCrash() tries to delete when a male is waiting. Should Abort.
+
+femaleCrash() tries to delete when a female is waiting. Should Abort.
+
+matchmakerCrash() tries to delete when a matchmaker is waiting. Should Abort.
+
+
+
+
+
+Summary
+Everyone in our group contributed to the project. One of the pros we had is that
+we all live together in the same apartment. So we would all sit down together
+and work on each aspect together. We reasoned about the problems together and
+came up with solutions. We would usually test in pairs due to time conflicts.
+There weren't any fixed pairs to do testing and we would mix and match.

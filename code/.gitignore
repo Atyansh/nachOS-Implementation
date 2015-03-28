@@ -1,0 +1,6 @@
+*.o
+nachos
+swtch.s
+*.coff
+deps.mk
+tags

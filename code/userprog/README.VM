@@ -1,0 +1,210 @@
+CSE 120 Nachos Project 3: Virtual Memory
+
+
+Team Members-
+Atyansh Jaiswal
+Connor Gregory Nicholson
+Eduardo Ramirez Alcala
+Victor Miguel Alor
+
+
+Note: For extra credit from previous assignment (fork), we didn't implement
+      demand paging and page replacement as it was not required. Therefore,
+      to test fork, we need sufficient physical pages to run, but demand
+      paging and page replacement implemented correctly for regular behavior
+
+
+1. Implementing Demand Paging
+
+To implement demand paging we first modified AddrSpace's initialize method.
+When initializing the pageTable the AddrSpace no longer reads from the 
+executable into memory. Instead it simply stores the executable into an instance
+variable, calculates the number of pages the spawned process will require
+,creates a page table of the corresponding size and for each PTE 
+it sets the valid bit to false and allocates a physical page frame.
+Additionally, in AddrSpace we added a method, allocVirtualPage,
+that when given a virtual address, it loads the corresponding virtual page 
+into memory and sets the PTE's valid bit to true.
+
+In exception.cc we modified the portion of the ExceptionHandler that dealt with
+page faults. We modified the section so that when a page fault occurs 
+the AddrSpace's allocVirtualPage is called and provided the virtual address
+that triggered the fault. Once the method returns and the page has been loaded,
+the ExceptionHandler no longer increments the PC counter.
+
+To test the correctness of the code, we re-ran all previous tests and
+checked that it had the correct behavior.The test were the following
+
+
+
+2. Implementing Demand Paged Virtual Memory With Page Replacement.
+
+Implementation of part 2 required the creation of three new classes, corePage,
+CoreMap and BackingStore. 
+
+BackingStore is responsible for managing an AddrSpace's interactions 
+with disk,which for this project was a designated file. Whenever a process's 
+virtual page is evicted from a physical page and it has been marked as dirty
+i.e it has been modified it's,  BackingStore writes the contents of 
+said page into its associated file. After a page has been written to a file
+whenever the BackingStore's associated process requires the page,BackingStore
+reads it from the file and loads it into memory.
+
+CorePage is a simple class which maps physical pages to process's. The 
+class accomplishes this by storing a process's BackingStore,the number of the
+physical page and the virtual page number it has been associated with.
+
+CoreMap is manager for corePages.CoreMap is a collection of the CorePages that
+are currently in use, i.e. physical pages that are currently being used. The
+coreMap is used to check if all physical pages are in use. If all physical pages
+are in use the then CoreMap is responsible for evicting some page and informing
+the associated BackingStore of the eviction.
+
+With these new classes we established the following control flow in 
+exception.cc and AddrSpace.cc. Whenever
+a pageFault occurs the handler first consults CoreMap to determine if a 
+physical page is available. If one is not the CoreMap evicts a page and
+informs the evicted process's BackingStore. The process's requesting the 
+page then requests a physical page from memoryManager.
+
+The AddrSpace's allocVirtualPage was modified in the following manner.
+Once it has been called it first checks if the BackingStore has written the
+virtual page tot disk.If it has AddrSpace requests its BackingStore load
+th page directly from disk. If not then the AddrSpace behaves as before it 
+simply reads from the executable. The final modification was in Exit, whenever
+a process terminates it requests that CoreMap remove all entries that are
+associated with its BackingStore.
+
+CoreMap uses the FIFO strategy to determine which page should be evicted
+,that is the first page allocated is the first removed.
+
+The above scheme and code modifications were tested by simply lowering the
+physNumPage variable to various smaller numbers and checking that all previous
+tests could run correctly.The tests were described above in section 1.
+
+
+
+
+3. Testing
+The spec had the following requirements
+ 1. A program that references all pages.
+ 2. A program that references all a subset of pages.
+ 3. A program that has good locality.
+ 4. A program that has poor locality.
+ 5. A program that has random locality.
+
+To meet the requirements physPageNum was decreased so that page swapping
+would occur. We tested it with NumPhysPages = 2 successfully. However,
+we rechanged the total number of pages to 32 after testing,  since that is what
+we used to generate data for FIFO or LRU algorithms.
+
+To meet the first requirement we created referenceAllPages.c . The file 
+consists of the creation of an array and the traversal of the array 
+recursively,that is the array is traversed and then it calls  a method
+that traverses the array and so on. 
+
+To meet the second requirement we created referenceSubsetPages.c.The file 
+is similar to referenceAllPages.c in that it consists of the traversal of 
+an array, but the file is different in that it contains a number of useless 
+stub methods.
+
+To meet the third requirement we created goodLocality.c. The file 
+consists of the creation of a large array. Then this array is traversed
+once. Then smaller subsets are traversed.
+
+To meet the fourth method we created poorLocality.c. The file consists of
+the creation of an array an the traversal of an array multiple times.
+
+To meet the fifth requirement we created randomLocality.c. The file
+consists of the creation of an extremely large array. Random points
+of the array are then accessed and or modified.
+
+
+
+
+
+4. Maintain Counters of Page Faults and PageIn and PageOut Events.
+First we added new counters numPageOuts and numPageIns to machine/stats.h.
+Whenever a page fault occurs we increment the already existing counter for
+page faults in exceptionHandler method of exception.cc. The PageIn counter 
+is incremented in two sections in AddrSpace it is increment in AllocVirtualPage
+if either data or code is loaded.The PageIn counter is also incremented in 
+BackingStore when a page is read from disk. The pageOut counter is incremented
+in backingStore whenever a page is written to disk.
+
+The data gathered by counters pageFaults,numPageOuts and numPageIns is
+printed in the halt method and in the clean up method. Some sample data is 
+below (using both FIFO and LRU Page replacement algorithms)
+
+A)-
+  Physical memory size: 32 pages.
+  Page replacement policy: FIFO.
+
+  Program   PageFaults  PageOuts  PageIns
+  matmult   107         47        69
+  sort      4832        4361      4799
+  multitest 122         50        81
+
+
+  Physical memory size: 32 pages.
+  Page replacement policy: FIFO.
+
+  Program   PageFaults  PageOuts  PageIns
+  matmult   107         47        69
+  sort      4832        4361      4799
+  multitest 122         50        81
+
+B)-
+  Physical memory size: 32 pages.
+  Page replacement policy: LRU.
+
+  Program   PageFaults  PageOuts  PageIns
+  matmult   107         47        69
+  sort      4832        4361      4799
+  multitest 122         50        81
+
+
+  Physical memory size: 32 pages.
+  Page replacement policy: FIFO.
+
+  Program   PageFaults  PageOuts  PageIns
+  matmult   107         47        69
+  sort      3080        2836      3047
+  multitest 114         48        73
+
+
+As demonstrated, the LRU algorithm decreases the number of page faults, PageOuts
+and PageIns. It's effect is most significantly noticed in sort.
+
+
+
+
+5.Implementing LRU
+First we added a flag ,"-e" and a global boolean variable was added
+to indicate that LRU should be used for the page eviction strategy.
+To approximate LRU we implemented the clock strategy. 
+CoreMap the class responsible for page eviction was modified in the 
+following manner. First when evicting a page CoreMap checks if the global 
+boolean indicating if LRU should be used is set to true. If it has been then
+rather than removing the head of the list as before,it traverses through the 
+list examine each PTE's use bit. If the bit is zero then page is evicted
+if it is not then the bit is set to 0. If all bits are one then the CoreMap
+resorts to FIFO that is removes the first page that has been allocated.
+
+We tested this implementation by re-running the previously mentioned tests and
+by examining the data reported by the modifications done in part 4.
+
+
+
+
+Summary
+Everyone in our group contributed to the project. One of the pros we had is that
+we all live together in the same apartment. So we would all sit down together
+and work on each aspect together. we reasoned about the problems together and
+came up with solutions. we would usually test in pairs due to time conflicts.
+there weren't any fixed pairs to do testing and we would mix and match.
+
+This time it was exceptionally difficult due to extremely busy schedule of our
+teammates, so we had to finish our assignment later than we usually do, due to
+this, certain style and code quality might have suffered a bit but we managed to
+still try to follow our meticulous design patterns.

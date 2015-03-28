@@ -1,0 +1,229 @@
+CSE 120 Nachos Project 2: Multiprogramming
+
+Team Members-
+Atyansh Jaiswal
+Connor Gregory Nicholson
+Eduardo Ramirez Alcala
+Victor Miguel Alor
+
+
+
+
+Important Note: We implemented all 8 parts and wrote appropriate test cases.
+                Everything should function as specified by the assignment
+                except for part 8, where the one minor difference is that exit
+                does not kill the whole process but just kills the thread. We
+                did this to maintain the essence of multiprogramming.
+
+
+
+Note: The value of NumPhysPages was changed to 100 pages. This is because we
+wanted to test multiprogramming with multiple processes, 100 pages allowed
+us to test with more processes. Because of this, we can actually run matmult
+correctly. To test for running out of memory, we wrote runOutOfMemoryTest.c and
+multioutofmemorytest.c
+
+
+
+
+1. Implementing AddrSpace
+We first wrote the Memory Manager class, located in addrspace.h and implemented
+in addrspace.cc and used locks and condition variables to synchronize access to
+Memory manager. We then reimplemented the constructor of addspace into the
+Initialize methods, to handle erros and to support multiprogramming. We were
+able to do this by using the Memory Manager class to find us a page in physical
+memory, returning error codes for errors, and then loading the code and data
+individually for each page, taking into account the correct offset.
+
+To test our code, we needed to wait until we finished implementing Exec and Exit
+System calls, so testing for this is described with Part 2.
+
+
+
+2. Implementing Exec and Exit syscalls
+We started first by writing the Table class in Table.h and implementing it in
+exception.cc and used locks and condition variable to synchronize access to
+Table. We used the Table to store all the threads that were created to run
+either a new process or a forked thread of a process, so that we can access them
+later. We then implemented the Exit and Exec system calls in exception.cc, we
+first created handlers for them in the Exception Handler, loaded the registers
+and called the sysCallExit and Exec2 routines respectively to implement the
+system calls. The sysCallExit releases the thread from the Table, and finishes
+the thread. The Exec2 method first translates the filename, opens it, then
+initializes a new addrspace for it and then runs it in a forked process.
+
+Note: We put a limit of size 100 bytes for the name of the new process to be
+Exec'ed as we thought that was a reasonable number. If you try a filename with
+length >= 100, the program will not exec the process and return with an error
+code. execlongnametest.c was written to test this behavior
+
+
+We tested our implementation of part 1 and 2 through these tests
+
+exittest.c - exits the process
+exectest.c - Tests simple exec
+execlongnametest.c - Tries to exec a file with a name length greater than limit
+array.c - creates an array and sums it up
+multitest.c - tests multiprogramming, runs multiple processes
+matmult.c - matrix multiplication
+runOutOfMemoryTest.c - Runs out of memory so cannot start a process
+multioutofmemorytest.c - one of the exec'ed processes cannot be allocated
+
+
+3. Passing arguments in Exec
+We did this by first loading the registers from the exec handler, translating
+all the arguments and putting them in a char ** argv array, then passing the
+arguments to the new address space (using addArguments we created in AddrSpace),
+then once the forked process is called and the registers are initialized, we
+made a LoadArguments method in addrspace to translate the arguments into
+virtual addresses, putting them in the registers for the new process, and
+adjusting the stack pointer accordingly. When passing arguments, we also added
+the name of the file as the first argument implicitly.
+
+Note: We picked 512 as the extra space allocated for the arguments of a process.
+      This is macro defined as "ArgumentSize" in addrspace.h
+
+Note: We put a limit of size 50 on the length of each argv argument to be a
+maximum of 50. The length of the first argument is however still only restricted
+to 100, but all the arguments passed in by user at Exec have a limit of 50. This
+behavior was tested using execinvalidargtest.c
+
+We tested our implementation of part 3 through these tests
+
+argtest.c - prints arguments passed into the process (only if called using Exec)
+execargtest.c - Passes arguments to argtest, which prints them out
+execinvalidtest.c - Argument length exceeds 50 so doesn't start argtest
+
+
+
+4. Implementing Read and Write System Calls
+We did this by first writing the SynchConsole.h and SynchConsole.cc files to
+implement a synchronized console. We used Semaphores to maintain synchronization
+We had to write static handlers that were passed into the console constructor
+which were called when a read was available or a write was done. we used
+composition on the console to achieve a synchronized console. We also changed
+progtest.c to now use our SynchConsole instead of manually synchronizing. The
+SynchConsole is initialized in StartProcess sothat console gets fired up at the
+beginning.
+
+We then implemented the Read and Write System calls in Read2 and Write2 routines
+in exception.cc respectively. We used a Lock to maintain atomicity so that two
+threads don't try to simultaneously write to or read from the console.
+
+We have the necessary precondition checks to prevent reading or writing outside
+of the virtual memory bounds. If the address of the buffer was invalid or if
+user tried to read from or write to something other than stdin or stdout
+respectively, we return -1 to indicate error, if the user tried to read or write
+with a size that exceeded the memory bounds, it would only read or write as much
+as it could and return the amount of bytes read or written.
+
+We tested our implementation of part 4 through these tests
+
+echo.c - Echoes back user input
+snake.c - Creates a console snake
+invalidbuffertest.c - When buffer is invalid (out of virtual memory)
+writetoolarge.c - when the writing size is out of virtual address space
+notwritingtostdout - when trying to write to stdin instead of stdout
+./nachos -c as the console test
+
+
+
+5. Handling exceptions
+This part was relatively simple, we just created handlers for all the exception
+types and called sysCallExit with value -1 to kill the process. Appropriate
+error messages were also printed.
+
+We tested our implementation of part 5 through these tests
+
+addressExceptionTest.c - Causes an AddressErrorException, dereferences bogus ptr
+illegalExceptionTest.c - Causes IllegalInstrException, invokes bogus func ptr
+
+
+
+6. Implementing Join System Call
+We implemented this by first passing in the willJoin parameter to Exec, AND'ing
+it with 1 to get join value and creating a thread with that join value passed to
+it. We added a getter and setter for exit status value in our thread class, so
+that when Exit is called, we set the join value in the thread using the setter,
+then when Join is called on the thread, we get the value of that status using
+the getter. We also added a canJoin() method to the thread to check if the
+thread can be joined or not, which is used to check for error conditions.
+
+We tested our implementation of part 6 through these tests
+
+jointest - Simple join behavior tested
+joinInvalidID - Joining on a process that doesn't exist, returns with error
+joinUnjoinable - Joining an unjoinable thread, returns with error
+
+
+
+7. Implementing Piping
+We first implemented a Pipe class in Pipe.h which creates a circular queue as
+a buffer. We picked 128 as the size of each buffer as we thought this was
+reasonable. We implemented the Pipe class in exception.cc file. The pipe is
+also synchronized usng locks and condition variables so that if the pipe is
+full or empty, the process waits before writing or reading from the pipe unless
+the pipe is broken on the other side, in which case the process would not wait.
+In our Exec2 routine, we check the value of the willJoin parameter to find
+whether the process would be piped or not. and then accordingly set pipes for
+the thread. We had to write two pairs of setters and getters in out thread class
+to assign input and output pipes. The Pipe class also had a pair of setters and
+getters to check whether a side of the pipe is occupied or not. The
+implementation documentation is further discussed in Pipe.h. The assigning of
+the correct pipes was tricky but we managed to do it by having a static pointer
+to the current pipe and then restting the pointer once that pipe is fully
+occupied.
+
+In our Read2 and Write2 routines, we check the pipeValue (we wrote a getter and
+setter for pipeValue in our thread class also) and then read from or write to
+either the respective pipe, or stdin or stdout, based on the pipeValue.
+
+Pipe deletion was done by checking in sysCallExit if the thread to be exited has
+a pipe or not and if the pipe is being is being used by another thread or not,
+and then deleting the pipe if the pipe is free.
+
+We tested our implementation of part 7 through these tests-
+
+produce.c - Takes input and echoes the output (to the pipe)
+consume.c - Takes input (from a pipe), applies a Caesar cipher of 1,
+            and then puts the output (in a pipe or stdout)
+pipetest.c - Execs 4 processes all piped together, the first process is produce
+             which takes input from stdin, this input is then piped to consume,
+             which pipes tp consume again, which pipes again to consume, which
+             then prints to stdout, 3 pipes of consume create a Caesar cipher of
+             shift value of positive 3.
+
+
+
+8. Implementing Fork and Yield system calls
+We implemented this in Fork2 and Yield2 routines respectively. Yield was simple
+to do, since all it required was the thread's yield call. To Fork, we had to
+write a function allocateThreadSpace in addrspace.cc to account for allocating
+more space for the new thread. If we couldn't allocate space for new thread for
+some reason, the program is not quit, instead the fork is just not performed,
+with appropriate error messages. The forked thread shares the same address space
+with the original thread, so only the reference of the addrspace was copied.
+We had to add a setter and getter for threadCount in addrspace to keep track of
+all the threads sharing the address space. This was done so that when a thread
+exits, we don't delete the address space unless it's the last thread to exit.
+This is different from the behavior asked in the assignment, but we wanted to
+achieve true multiprogramming.
+
+We tested our implementation of part 8 through these tests-
+
+forktest.c - Forks threads and ping pongs between them using yield
+
+
+
+
+
+Summary
+Everyone in our group contributed to the project. One of the pros we had is that
+we all live together in the same apartment. So we would all sit down together
+and work on each aspect together. We reasoned about the problems together and
+came up with solutions. We would usually test in pairs due to time conflicts.
+There weren't any fixed pairs to do testing and we would mix and match.
+
+The schedule was slightly different during Thanksgiving period since we all went
+home except for AJ. So we would have skype meetings and AJ would be the driver
+since he had the most stable connection to ieng6.
